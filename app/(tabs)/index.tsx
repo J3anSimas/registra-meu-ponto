@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Button, Image, Pressable, StyleSheet, View } from 'react-native';
 
 
 import { ThemedText } from '@/src/components/themed-text';
+import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { ThemedView } from '@/src/components/themed-view';
 import { Asset } from "expo-asset";
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -12,7 +13,7 @@ import { useRef, useState } from 'react';
 import MlkitOcr, { MlkitOcrResult } from 'react-native-mlkit-ocr';
 
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 // const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true";
 
 function fixHourFormat(rawText: string) {
@@ -46,8 +47,7 @@ async function mockTakePicture() {
         const output = new File(Paths.cache, "mock-photo.jpg");
         try {
             output.delete()
-        } catch (error) {
-
+        } catch {
         }
         const source = new File(asset.localUri!);
         await source.copy(output);
@@ -141,11 +141,11 @@ export default function HomeScreen() {
                 <ThemedView style={styles.form}>
                     <ThemedView style={styles.formGroup}>
                         <ThemedText>Data:</ThemedText>
-                        <TextInput style={styles.input} value={data} onChangeText={setData} />
+                        <ThemedTextInput style={styles.input} value={data} onChangeText={setData} />
                     </ThemedView>
                     <ThemedView style={styles.formGroup}>
                         <ThemedText>Hora:</ThemedText>
-                        <TextInput style={styles.input} value={hour} onChangeText={setHour} />
+                        <ThemedTextInput style={styles.input} value={hour} onChangeText={setHour} />
                     </ThemedView>
                     <Pressable style={styles.button} onPress={resetData}>
                         <ThemedText style={styles.buttonText}>Salvar</ThemedText>
