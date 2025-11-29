@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Button, Image, Pressable, StyleSheet, View } from 'react-native';
 
 
 import { ThemedText } from '@/src/components/themed-text';
@@ -71,6 +71,7 @@ export default function HomeScreen() {
     const [uri, setUri] = useState('');
     const [result, setResult] = useState<MlkitOcrResult | undefined>();
     const [cameraKey, setCameraKey] = useState(0);
+    const [isLoading, setIsLoading] = useState(false);
 
     function resetData() {
         setUri('');
@@ -78,6 +79,7 @@ export default function HomeScreen() {
         setData('');
         setHour('');
         setCameraKey(prev => prev + 1);
+        setIsLoading(false);
     }
 
     async function processImage(uri: string,) {
@@ -110,20 +112,30 @@ export default function HomeScreen() {
         );
     }
     async function handleTakePicture() {
-        if (cameraRef.current) {
-            if (USE_MOCK) {
-                const photo = await mockTakePicture();
-                if (!photo) return
-                setUri(photo.uri);
-                await processImage(photo.uri)
-            } else {
-                const photo = await cameraRef.current.takePictureAsync({
-                    quality: 1,
-                    shutterSound: false,
-                });
+        if (cameraRef.current && !isLoading) {
+            setIsLoading(true);
+            try {
+                if (USE_MOCK) {
+                    const photo = await mockTakePicture();
+                    if (!photo) {
+                        setIsLoading(false);
+                        return;
+                    }
+                    setUri(photo.uri);
+                    await processImage(photo.uri);
+                } else {
+                    const photo = await cameraRef.current.takePictureAsync({
+                        quality: 1,
+                        shutterSound: false,
+                    });
 
-                setUri(photo.uri);
-                await processImage(photo.uri)
+                    setUri(photo.uri);
+                    await processImage(photo.uri);
+                }
+            } catch (error) {
+                console.error('Erro ao processar foto:', error);
+            } finally {
+                setIsLoading(false);
             }
         }
     }
@@ -161,8 +173,22 @@ export default function HomeScreen() {
                     ref={cameraRef}
                     mute={true}
                 />
-                <Pressable style={styles.cameraButton} onPress={handleTakePicture}>
-                    <Ionicons name="camera" size={32} color="white" />
+                {isLoading && (
+                    <View style={styles.loadingOverlay}>
+                        <ActivityIndicator size="large" color="#0a7ea4" />
+                        <ThemedText style={styles.loadingText}>Processando imagem...</ThemedText>
+                    </View>
+                )}
+                <Pressable
+                    style={[styles.cameraButton, isLoading && styles.cameraButtonDisabled]}
+                    onPress={handleTakePicture}
+                    disabled={isLoading}
+                >
+                    {isLoading ? (
+                        <ActivityIndicator size="small" color="white" />
+                    ) : (
+                        <Ionicons name="camera" size={32} color="white" />
+                    )}
                 </Pressable>
             </ThemedView>
         )
@@ -267,6 +293,24 @@ const styles = StyleSheet.create({
     },
     message: {
         color: 'red'
-    }
+    },
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1000,
+    },
+    loadingText: {
+        marginTop: 16,
+        fontSize: 16,
+    },
+    cameraButtonDisabled: {
+        opacity: 0.5,
+    },
 })
 
