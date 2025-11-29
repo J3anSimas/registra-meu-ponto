@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Image, Pressable, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Button, Image, Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 
 import { ThemedText } from '@/src/components/themed-text';
@@ -16,7 +16,9 @@ const USE_MOCK = true;
 // const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true";
 
 function fixHourFormat(rawText: string) {
-    const horaRegex = /(\d{2})[\.\:](\d{2})/;
+    // const horaRegex = /(\d{2})[\.\:](\d{2})/;
+    const horaRegex = /(\d{2})\s*[:.]\s*(\d{2})/;
+
     const match = rawText.match(horaRegex);
 
     if (match) {
@@ -68,12 +70,14 @@ export default function HomeScreen() {
     const [hour, setHour] = useState('');
     const [uri, setUri] = useState('');
     const [result, setResult] = useState<MlkitOcrResult | undefined>();
+    const [cameraKey, setCameraKey] = useState(0);
 
     function resetData() {
         setUri('');
         setResult(undefined);
         setData('');
         setHour('');
+        setCameraKey(prev => prev + 1);
     }
 
     async function processImage(uri: string,) {
@@ -82,13 +86,14 @@ export default function HomeScreen() {
         const joinedLines = resultFromUri.map(block =>
             block.lines.map(line => line.text).join('')
         ).join('')
-
+        console.log(joinedLines);
         const formattedDate = fixDateFormat(joinedLines);
         if (formattedDate) {
             setData(formattedDate);
         }
         const formattedHour = fixHourFormat(joinedLines);
         if (formattedHour) {
+            console.log('Hora corrigida:', formattedHour);
             setHour(formattedHour);
         }
     }
@@ -98,7 +103,7 @@ export default function HomeScreen() {
 
     if (!permission.granted) {
         return (
-            <ThemedView style={styles.container}>
+            <ThemedView style={styles.takePictureContainer}>
                 <ThemedText>Precisamos de permissão para usar a câmera</ThemedText>
                 <Button onPress={requestPermission} title="Permitir" />
             </ThemedView>
@@ -114,6 +119,7 @@ export default function HomeScreen() {
             } else {
                 const photo = await cameraRef.current.takePictureAsync({
                     quality: 1,
+                    shutterSound: false,
                 });
 
                 setUri(photo.uri);
@@ -147,14 +153,17 @@ export default function HomeScreen() {
                 </ThemedView>
             </ThemedView>
         ) : (
-            <ThemedView style={styles.container}>
-
-                <CameraView style={styles.camera} facing="back" ref={cameraRef} />
-                <ThemedView style={styles.buttonContainer}>
-                    <TouchableOpacity style={styles.button} onPress={handleTakePicture}>
-                        <ThemedText style={styles.text}>Tirar foto</ThemedText>
-                    </TouchableOpacity>
-                </ThemedView>
+            <ThemedView style={styles.takePictureContainer}>
+                <CameraView
+                    key={cameraKey}
+                    style={styles.camera}
+                    facing="back"
+                    ref={cameraRef}
+                    mute={true}
+                />
+                <Pressable style={styles.cameraButton} onPress={handleTakePicture}>
+                    <Ionicons name="camera" size={32} color="white" />
+                </Pressable>
             </ThemedView>
         )
     );
@@ -212,14 +221,17 @@ const styles = StyleSheet.create({
         padding: 10,
         borderRadius: 5
     },
-    container: {
+    takePictureContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
+        position: 'relative',
+        width: '100%',
+        height: '100%',
     },
     camera: {
-        width: 300,
-        height: 300,
+        width: '100%',
+        height: '100%',
     },
     buttonContainer: {
         flex: 1,
@@ -233,6 +245,17 @@ const styles = StyleSheet.create({
         backgroundColor: 'blue',
         padding: 10,
         borderRadius: 5,
+    },
+    cameraButton: {
+        position: 'absolute',
+        bottom: 20,
+        alignSelf: 'center',
+        backgroundColor: 'blue',
+        borderRadius: 35,
+        width: 70,
+        height: 70,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     buttonText: {
         color: 'white',
