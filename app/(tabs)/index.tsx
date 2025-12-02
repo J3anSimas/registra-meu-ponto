@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Button, Image, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Button, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 
 
 import { ThemedText } from '@/src/components/themed-text';
@@ -7,13 +7,16 @@ import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { ThemedView } from '@/src/components/themed-view';
 import { Asset } from "expo-asset";
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { File, Paths } from "expo-file-system";
+import { Directory, File, Paths } from "expo-file-system";
 
+
+import { v4 } from '@/src/common/uuid';
+import { createTimeEntry } from '@/src/db';
 import { useRef, useState } from 'react';
 import MlkitOcr, { MlkitOcrResult } from 'react-native-mlkit-ocr';
 
 
-const USE_MOCK = false;
+const USE_MOCK = true;
 // const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true";
 
 function fixHourFormat(rawText: string) {
@@ -66,17 +69,18 @@ async function mockTakePicture() {
 export default function HomeScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<CameraView | null>(null);
-    const [data, setData] = useState('');
+    const [date, setDate] = useState('');
     const [hour, setHour] = useState('');
     const [uri, setUri] = useState('');
     const [result, setResult] = useState<MlkitOcrResult | undefined>();
     const [cameraKey, setCameraKey] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
 
     function resetData() {
         setUri('');
         setResult(undefined);
-        setData('');
+        setDate('');
         setHour('');
         setCameraKey(prev => prev + 1);
         setIsLoading(false);
@@ -91,7 +95,7 @@ export default function HomeScreen() {
         console.log(joinedLines);
         const formattedDate = fixDateFormat(joinedLines);
         if (formattedDate) {
-            setData(formattedDate);
+            setDate(formattedDate);
         }
         const formattedHour = fixHourFormat(joinedLines);
         if (formattedHour) {
@@ -123,6 +127,8 @@ export default function HomeScreen() {
                     }
                     setUri(photo.uri);
                     await processImage(photo.uri);
+                    setDate('27/11/2025')
+                    setHour('13:01')
                 } else {
                     const photo = await cameraRef.current.takePictureAsync({
                         quality: 1,
@@ -140,30 +146,111 @@ export default function HomeScreen() {
         }
     }
 
+    async function handleSave() {
+        if (!date || !hour) {
+            Alert.alert('Erro', 'Data e hora são obrigatórias');
+            return;
+        }
+
+        if (!uri) {
+            Alert.alert('Erro', 'Imagem é obrigatória');
+            return;
+        }
+
+        if (isSaving) return;
+        setIsSaving(true);
+
+        try {
+            const id = v4();
+            // const file = new File(Paths.document, 'time_entries')
+            // if (file.exists) {
+            //     file.delete()
+
+            // }
+            // 1. Cria ou valida diretório
+            const folder = new Directory(Paths.document, 'time_entries');
+
+            if (!folder.exists) {
+                await folder.create({
+                    intermediates: true,
+                    idempotent: true
+                });
+            }
+
+            // 2. Define arquivo destino
+            const destinationFile = new File(folder, `${id}.jpg`);
+
+            // // Se já existir, remover
+            if (destinationFile.exists) {
+                await destinationFile.delete();
+            }
+
+            // 3. Arquivo origem (foto capturada)
+            const sourceFile = new File(uri);
+
+            if (!sourceFile.exists) {
+                throw new Error('A imagem capturada não pôde ser localizada.');
+            }
+
+            // 4. Copiar arquivo
+            await sourceFile.copy(destinationFile);
+
+            // 5. Salvar no DB
+            const timeEntry = await createTimeEntry({
+                id,
+                date,
+                hour,
+                file_path: destinationFile.uri,
+                created_at: new Date(),
+            });
+            console.log(timeEntry)
+            resetData();
+            Alert.alert('Sucesso', 'Registro salvo com sucesso!');
+        } catch (error: any) {
+            console.error('Erro ao salvar:', error);
+            Alert.alert('Erro', error?.message ?? 'Erro desconhecido ao salvar');
+        } finally {
+            setIsSaving(false);
+        }
+    }
 
     return (
         result ? (
-            <ThemedView style={styles.pictureTakenContainer}>
-                <View style={styles.imageContainer}>
-                    <Pressable style={styles.resetButton} onPress={resetData} >
-                        <Ionicons name="refresh-outline" size={24} color="black" />
-                    </Pressable>
-                    <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
-                </View>
-                <ThemedView style={styles.form}>
-                    <ThemedView style={styles.formGroup}>
-                        <ThemedText>Data:</ThemedText>
-                        <ThemedTextInput style={styles.input} value={data} onChangeText={setData} />
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+            >
+                <ThemedView style={styles.pictureTakenContainer}>
+                    <View style={styles.imageContainer}>
+                        <Pressable style={styles.resetButton} onPress={resetData} >
+                            <Ionicons name="refresh-outline" size={24} color="black" />
+                        </Pressable>
+                        <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
+                    </View>
+                    <ThemedView style={styles.form}>
+                        <ThemedView style={styles.formGroup}>
+                            <ThemedText>Data:</ThemedText>
+                            <ThemedTextInput style={styles.input} value={date} onChangeText={setDate} />
+                        </ThemedView>
+                        <ThemedView style={styles.formGroup}>
+                            <ThemedText>Hora:</ThemedText>
+                            <ThemedTextInput style={styles.input} value={hour} onChangeText={setHour} />
+                        </ThemedView>
+                        <Pressable
+                            style={[styles.button, isSaving && styles.buttonDisabled]}
+                            onPress={handleSave}
+                            disabled={isSaving}
+                        >
+                            {isSaving ? (
+                                <ActivityIndicator size="small" color="white" />
+                            ) : (
+                                <ThemedText style={styles.buttonText}>Salvar</ThemedText>
+                            )}
+                        </Pressable>
                     </ThemedView>
-                    <ThemedView style={styles.formGroup}>
-                        <ThemedText>Hora:</ThemedText>
-                        <ThemedTextInput style={styles.input} value={hour} onChangeText={setHour} />
-                    </ThemedView>
-                    <Pressable style={styles.button} onPress={resetData}>
-                        <ThemedText style={styles.buttonText}>Salvar</ThemedText>
-                    </Pressable>
                 </ThemedView>
-            </ThemedView>
+            </KeyboardAvoidingView>
         ) : (
             <ThemedView style={styles.takePictureContainer}>
                 <CameraView
@@ -271,6 +358,9 @@ const styles = StyleSheet.create({
         backgroundColor: 'blue',
         padding: 10,
         borderRadius: 5,
+    },
+    buttonDisabled: {
+        opacity: 0.5,
     },
     cameraButton: {
         position: 'absolute',
