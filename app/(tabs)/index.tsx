@@ -5,6 +5,7 @@ import { ActivityIndicator, Alert, Button, Image, KeyboardAvoidingView, Platform
 import { ThemedText } from '@/src/components/themed-text';
 import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { ThemedView } from '@/src/components/themed-view';
+import { useThemeColor } from '@/src/hooks/use-theme-color';
 import { Asset } from "expo-asset";
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Directory, File, Paths } from "expo-file-system";
@@ -16,7 +17,7 @@ import { useRef, useState } from 'react';
 import MlkitOcr, { MlkitOcrResult } from 'react-native-mlkit-ocr';
 
 
-const USE_MOCK = true;
+const USE_MOCK = false;
 // const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true";
 
 function fixHourFormat(rawText: string) {
@@ -41,6 +42,19 @@ function fixDateFormat(rawText: string) {
     }
     return null;
 }
+function formatDateInput(text: string): string {
+    const digits = text.replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function formatHourInput(text: string): string {
+    const digits = text.replace(/\D/g, '').slice(0, 4);
+    if (digits.length <= 2) return digits;
+    return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+}
+
 async function mockTakePicture() {
     try {
         const asset = Asset.fromModule(require("../../src/assets/mock/sample.jpg"));
@@ -76,6 +90,8 @@ export default function HomeScreen() {
     const [cameraKey, setCameraKey] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const tintColor = useThemeColor({}, 'tint');
+    const borderColor = useThemeColor({}, 'icon');
 
     function resetData() {
         setUri('');
@@ -223,22 +239,22 @@ export default function HomeScreen() {
             >
                 <ThemedView style={styles.pictureTakenContainer}>
                     <View style={styles.imageContainer}>
-                        <Pressable style={styles.resetButton} onPress={resetData} >
+                        <Pressable style={[styles.resetButton, { backgroundColor: 'rgba(255,255,255,0.85)' }]} onPress={resetData} >
                             <Ionicons name="refresh-outline" size={24} color="black" />
                         </Pressable>
                         <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
                     </View>
-                    <ThemedView style={styles.form}>
+                    <ThemedView style={[styles.form, { borderColor }]}>
                         <ThemedView style={styles.formGroup}>
-                            <ThemedText>Data:</ThemedText>
-                            <ThemedTextInput style={styles.input} value={date} onChangeText={setDate} />
+                            <ThemedText style={styles.label}>Data:</ThemedText>
+                            <ThemedTextInput style={styles.input} value={date} onChangeText={(text) => setDate(formatDateInput(text))} keyboardType="numeric" maxLength={10} />
                         </ThemedView>
                         <ThemedView style={styles.formGroup}>
-                            <ThemedText>Hora:</ThemedText>
-                            <ThemedTextInput style={styles.input} value={hour} onChangeText={setHour} />
+                            <ThemedText style={styles.label}>Hora:</ThemedText>
+                            <ThemedTextInput style={styles.input} value={hour} onChangeText={(text) => setHour(formatHourInput(text))} keyboardType="numeric" maxLength={5} />
                         </ThemedView>
                         <Pressable
-                            style={[styles.button, isSaving && styles.buttonDisabled]}
+                            style={[styles.button, { backgroundColor: tintColor }, isSaving && styles.buttonDisabled]}
                             onPress={handleSave}
                             disabled={isSaving}
                         >
@@ -267,7 +283,7 @@ export default function HomeScreen() {
                     </View>
                 )}
                 <Pressable
-                    style={[styles.cameraButton, isLoading && styles.cameraButtonDisabled]}
+                    style={[styles.cameraButton, { backgroundColor: tintColor }, isLoading && styles.cameraButtonDisabled]}
                     onPress={handleTakePicture}
                     disabled={isLoading}
                 >
@@ -328,8 +344,7 @@ const styles = StyleSheet.create({
     },
     input: {
         height: 40,
-        // width: '100%',
-        margin: 12,
+        flex: 1,
         borderWidth: 1,
         padding: 10,
         borderRadius: 5
@@ -352,10 +367,12 @@ const styles = StyleSheet.create({
         justifyContent: 'flex-end',
         marginBottom: 20,
     },
+    label: {
+        minWidth: 48,
+    },
     button: {
         width: '100%',
         alignItems: 'center',
-        backgroundColor: 'blue',
         padding: 10,
         borderRadius: 5,
     },
@@ -366,7 +383,6 @@ const styles = StyleSheet.create({
         position: 'absolute',
         bottom: 20,
         alignSelf: 'center',
-        backgroundColor: 'blue',
         borderRadius: 35,
         width: 70,
         height: 70,

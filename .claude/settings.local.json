@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint:*)",
+      "Bash(ls:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:docs.expo.dev)",
+      "Bash(eas:*)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Eclipse Adoptium/jdk-21.0.8.9-hotspot\":*)",
+      "Bash(\"$JAVA_HOME/bin/java\" -version)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\" ANDROID_HOME=\"/c/Users/jean.simas/AppData/Local/Android/Sdk\" \"$JAVA_HOME/bin/java\" -version)",
+      "Bash(JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\" ANDROID_HOME=\"/c/Users/jean.simas/AppData/Local/Android/Sdk\" ./gradlew:*)",
+      "Bash(git:*)"
+    ]
+  }
+}
