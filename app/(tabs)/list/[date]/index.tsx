@@ -1,5 +1,3 @@
-import { getAllTimeEntries, TimeEntry, deleteTimeEntry } from '@/src/db';
-import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet } from 'react-native';
 import { ThemedView } from '@/src/components/themed-view';
 import { ThemedText } from '@/src/components/themed-text';
@@ -7,33 +5,16 @@ import { TimeEntryCard } from '@/src/components/time-entry-card';
 import { useThemeColor } from '@/src/hooks/use-theme-color';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
+import { TimeEntry } from '@/src/db';
+import { useTimeEntriesByDate, useDeleteTimeEntry } from '@/src/hooks/use-time-entries';
 
 export default function DateDetailScreen() {
     const { date } = useLocalSearchParams<{ date: string }>();
-    const [entries, setEntries] = useState<TimeEntry[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const tintColor = useThemeColor({}, 'tint');
     const router = useRouter();
 
-    useEffect(() => {
-        const loadTimeEntries = async () => {
-            try {
-                setIsLoading(true);
-                const timeEntriesResult = await getAllTimeEntries();
-                // Filter entries for the selected date
-                const filteredEntries = timeEntriesResult
-                    .filter(e => e.date === date)
-                    .sort((a, b) => a.hour.localeCompare(b.hour));
-                setEntries(filteredEntries);
-            } catch (error) {
-                console.error('Erro ao carregar registros:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        loadTimeEntries();
-    }, [date]);
+    const { data: entries = [], isLoading } = useTimeEntriesByDate(date);
+    const deleteEntryMutation = useDeleteTimeEntry();
 
     async function handleDelete(id: string) {
         const entry = entries.find(e => e.id === id);
@@ -48,16 +29,13 @@ export default function DateDetailScreen() {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            await deleteTimeEntry(id);
-
                             if (entry?.file_path) {
                                 await FileSystem.deleteAsync(entry.file_path, { idempotent: true });
                             }
+                            await deleteEntryMutation.mutateAsync(id);
 
-                            const remaining = entries.filter(e => e.id !== id);
-                            setEntries(remaining);
-
-                            if (remaining.length === 0) {
+                            const remainingCount = entries.filter(e => e.id !== id).length;
+                            if (remainingCount === 0) {
                                 router.back();
                             }
                         } catch (error) {

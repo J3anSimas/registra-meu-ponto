@@ -12,8 +12,8 @@ import { Directory, File, Paths } from "expo-file-system";
 
 
 import { v4 } from '@/src/common/uuid';
-import { createTimeEntry } from '@/src/db';
 import { useRef, useState } from 'react';
+import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
 import MlkitOcr, { MlkitOcrResult } from 'react-native-mlkit-ocr';
 
 
@@ -104,7 +104,8 @@ export default function HomeScreen() {
     const [result, setResult] = useState<MlkitOcrResult | undefined>();
     const [cameraKey, setCameraKey] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
-    const [isSaving, setIsSaving] = useState(false);
+    const createEntryMutation = useCreateTimeEntry();
+    const isSaving = createEntryMutation.isPending;
     const tintColor = useThemeColor({}, 'tint');
     const borderColor = useThemeColor({}, 'icon');
 
@@ -199,7 +200,6 @@ export default function HomeScreen() {
         }
 
         if (isSaving) return;
-        setIsSaving(true);
 
         try {
             const id = v4();
@@ -237,7 +237,7 @@ export default function HomeScreen() {
             await sourceFile.copy(destinationFile);
 
             // 5. Salvar no DB
-            const timeEntry = await createTimeEntry({
+            const timeEntry = await createEntryMutation.mutateAsync({
                 id,
                 date,
                 hour,
@@ -250,8 +250,6 @@ export default function HomeScreen() {
         } catch (error: any) {
             console.error('Erro ao salvar:', error);
             Alert.alert('Erro', error?.message ?? 'Erro desconhecido ao salvar');
-        } finally {
-            setIsSaving(false);
         }
     }
 

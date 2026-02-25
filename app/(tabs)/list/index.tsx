@@ -1,4 +1,4 @@
-import { getAllTimeEntries, TimeEntry } from '@/src/db';
+import { TimeEntry } from '@/src/db';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -7,46 +7,30 @@ import { ThemedText } from '@/src/components/themed-text';
 import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { useThemeColor } from '@/src/hooks/use-theme-color';
 import { Ionicons } from '@expo/vector-icons';
+import { useTimeEntries } from '@/src/hooks/use-time-entries';
 
 type DateGroup = { date: string; entries: TimeEntry[] };
 
 export default function ListScreen() {
-    const [dateGroups, setDateGroups] = useState<DateGroup[]>([]);
     const [searchText, setSearchText] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
     const tintColor = useThemeColor({}, 'tint');
     const iconColor = useThemeColor({}, 'icon');
     const router = useRouter();
+
+    const { data: allEntries = [], isLoading, refetch } = useTimeEntries();
+
     useFocusEffect(
         useCallback(() => {
-            let cancelled = false;
+            refetch();
+        }, [refetch])
+    );
 
-            const loadTimeEntries = async () => {
-                try {
-                    setIsLoading(true);
-                    const timeEntriesResult = await getAllTimeEntries();
-                    if (cancelled) return;
-
-                    const grouped = timeEntriesResult.reduce<Record<string, TimeEntry[]>>((acc, e) => {
-                        (acc[e.date] ??= []).push(e);
-                        return acc;
-                    }, {});
-
-                    const groups: DateGroup[] = Object.entries(grouped)
-                        .map(([date, entries]) => ({ date, entries }));
-
-                    setDateGroups(groups);
-                } catch (error) {
-                    console.error('Erro ao carregar registros:', error);
-                } finally {
-                    if (!cancelled) setIsLoading(false);
-                }
-            };
-
-            loadTimeEntries();
-
-            return () => { cancelled = true; };
-        }, [])
+    const dateGroups: DateGroup[] = Object.values(
+        allEntries.reduce<Record<string, DateGroup>>((acc, entry) => {
+            if (!acc[entry.date]) acc[entry.date] = { date: entry.date, entries: [] };
+            acc[entry.date].entries.push(entry);
+            return acc;
+        }, {})
     );
 
     function navigateToDate(date: string) {
