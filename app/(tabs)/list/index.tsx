@@ -17,13 +17,15 @@ export default function ListScreen() {
     const tintColor = useThemeColor({}, 'tint');
     const iconColor = useThemeColor({}, 'icon');
     const router = useRouter();
-
     useFocusEffect(
         useCallback(() => {
+            let cancelled = false;
+
             const loadTimeEntries = async () => {
                 try {
                     setIsLoading(true);
                     const timeEntriesResult = await getAllTimeEntries();
+                    if (cancelled) return;
 
                     const grouped = timeEntriesResult.reduce<Record<string, TimeEntry[]>>((acc, e) => {
                         (acc[e.date] ??= []).push(e);
@@ -37,11 +39,13 @@ export default function ListScreen() {
                 } catch (error) {
                     console.error('Erro ao carregar registros:', error);
                 } finally {
-                    setIsLoading(false);
+                    if (!cancelled) setIsLoading(false);
                 }
             };
 
             loadTimeEntries();
+
+            return () => { cancelled = true; };
         }, [])
     );
 
