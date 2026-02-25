@@ -21,7 +21,9 @@ export default function DateDetailScreen() {
                 setIsLoading(true);
                 const timeEntriesResult = await getAllTimeEntries();
                 // Filter entries for the selected date
-                const filteredEntries = timeEntriesResult.filter(e => e.date === date);
+                const filteredEntries = timeEntriesResult
+                    .filter(e => e.date === date)
+                    .sort((a, b) => a.hour.localeCompare(b.hour));
                 setEntries(filteredEntries);
             } catch (error) {
                 console.error('Erro ao carregar registros:', error);

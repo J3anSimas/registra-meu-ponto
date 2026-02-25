@@ -42,6 +42,21 @@ function fixDateFormat(rawText: string) {
     }
     return null;
 }
+function isValidDate(date: string): boolean {
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return false;
+    const [day, month, year] = date.split('/').map(Number);
+    if (month < 1 || month > 12) return false;
+    if (day < 1 || day > 31) return false;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    return day <= daysInMonth;
+}
+
+function isValidHour(hour: string): boolean {
+    if (!/^\d{2}:\d{2}$/.test(hour)) return false;
+    const [h, m] = hour.split(':').map(Number);
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59;
+}
+
 function formatDateInput(text: string): string {
     const digits = text.replace(/\D/g, '').slice(0, 8);
     if (digits.length <= 2) return digits;
@@ -165,6 +180,16 @@ export default function HomeScreen() {
     async function handleSave() {
         if (!date || !hour) {
             Alert.alert('Erro', 'Data e hora são obrigatórias');
+            return;
+        }
+
+        if (!isValidDate(date)) {
+            Alert.alert('Data inválida', 'Informe a data no formato DD/MM/AAAA com valores válidos.');
+            return;
+        }
+
+        if (!isValidHour(hour)) {
+            Alert.alert('Hora inválida', 'Informe a hora no formato HH:MM com valores válidos.');
             return;
         }
 
