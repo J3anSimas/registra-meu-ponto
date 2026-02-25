@@ -1,13 +1,14 @@
 import { TimeEntry } from '@/src/db';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ThemedView } from '@/src/components/themed-view';
 import { ThemedText } from '@/src/components/themed-text';
 import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { useThemeColor } from '@/src/hooks/use-theme-color';
 import { Ionicons } from '@expo/vector-icons';
-import { useTimeEntries } from '@/src/hooks/use-time-entries';
+import { useQueryClient } from '@tanstack/react-query';
+import { useTimeEntries, TIME_ENTRIES_QUERY_KEY } from '@/src/hooks/use-time-entries';
 
 type DateGroup = { date: string; entries: TimeEntry[] };
 
@@ -16,13 +17,14 @@ export default function ListScreen() {
     const tintColor = useThemeColor({}, 'tint');
     const iconColor = useThemeColor({}, 'icon');
     const router = useRouter();
+    const queryClient = useQueryClient();
 
-    const { data: allEntries = [], isLoading, refetch } = useTimeEntries();
+    const { data: allEntries = [], isLoading, isRefetching, refetch } = useTimeEntries();
 
     useFocusEffect(
         useCallback(() => {
-            refetch();
-        }, [refetch])
+            queryClient.invalidateQueries({ queryKey: TIME_ENTRIES_QUERY_KEY });
+        }, [queryClient])
     );
 
     const dateGroups: DateGroup[] = Object.values(
@@ -128,6 +130,14 @@ export default function ListScreen() {
                     filteredGroups.length === 0
                         ? styles.emptyContainer
                         : styles.listContainer
+                }
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefetching}
+                        onRefresh={refetch}
+                        tintColor={tintColor}
+                        colors={[tintColor]}
+                    />
                 }
             />
         </ThemedView>

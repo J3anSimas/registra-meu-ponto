@@ -35,8 +35,11 @@ export function useDeleteTimeEntry() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (id: string) => deleteTimeEntry(id),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: TIME_ENTRIES_QUERY_KEY });
+        onSuccess: (_, id) => {
+            queryClient.setQueryData<TimeEntry[]>(
+                TIME_ENTRIES_QUERY_KEY,
+                (old) => old?.filter((entry) => entry.id !== id) ?? []
+            );
         },
     });
 }
