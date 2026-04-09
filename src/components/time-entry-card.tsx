@@ -8,9 +8,10 @@ import { TimeEntry } from '@/src/db';
 export interface TimeEntryCardProps {
   item: TimeEntry;
   onDelete: (id: string) => void;
+  onEdit?: (item: TimeEntry) => void;
 }
 
-export function TimeEntryCard({ item, onDelete }: TimeEntryCardProps) {
+export function TimeEntryCard({ item, onDelete, onEdit }: TimeEntryCardProps) {
   const iconColor = useThemeColor({}, 'icon');
 
   return (
@@ -44,12 +45,22 @@ export function TimeEntryCard({ item, onDelete }: TimeEntryCardProps) {
         </View>
       </View>
 
-      <Pressable
-        style={styles.deleteButton}
-        onPress={() => onDelete(item.id)}
-      >
-        <Ionicons name="trash-outline" size={18} color={iconColor} />
-      </Pressable>
+      <View style={styles.actions}>
+        {onEdit && (
+          <Pressable
+            style={styles.actionButton}
+            onPress={() => onEdit(item)}
+          >
+            <Ionicons name="pencil-outline" size={18} color={iconColor} />
+          </Pressable>
+        )}
+        <Pressable
+          style={styles.actionButton}
+          onPress={() => onDelete(item.id)}
+        >
+          <Ionicons name="trash-outline" size={18} color={iconColor} />
+        </Pressable>
+      </View>
     </ThemedView>
   );
 }
@@ -94,7 +105,10 @@ const styles = StyleSheet.create({
   label: {
     minWidth: 48,
   },
-  deleteButton: {
+  actions: {
+    gap: 4,
+  },
+  actionButton: {
     padding: 8,
   },
 });

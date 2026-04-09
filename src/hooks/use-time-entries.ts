@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createTimeEntry, deleteTimeEntry, getAllTimeEntries, TimeEntry } from '@/src/db';
+import { createTimeEntry, deleteTimeEntry, updateTimeEntry, getAllTimeEntries, TimeEntry } from '@/src/db';
 
 export const TIME_ENTRIES_QUERY_KEY = ['time-entries'] as const;
 
@@ -25,6 +25,16 @@ export function useCreateTimeEntry() {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: (entry: TimeEntry) => createTimeEntry(entry),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: TIME_ENTRIES_QUERY_KEY });
+        },
+    });
+}
+
+export function useUpdateTimeEntry() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (entry: Partial<TimeEntry> & { id: string }) => updateTimeEntry(entry),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: TIME_ENTRIES_QUERY_KEY });
         },

@@ -33,7 +33,11 @@ export default function ListScreen() {
             acc[entry.date].entries.push(entry);
             return acc;
         }, {})
-    );
+    ).sort((a, b) => {
+        const [da, ma, ya] = a.date.split('/').map(Number);
+        const [db, mb, yb] = b.date.split('/').map(Number);
+        return new Date(yb, mb - 1, db).getTime() - new Date(ya, ma - 1, da).getTime();
+    });
 
     function navigateToDate(date: string) {
         router.push({ pathname: '/list/[date]', params: { date } });

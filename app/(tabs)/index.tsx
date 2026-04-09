@@ -1,47 +1,44 @@
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Alert, Button, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
 
-
 import { ThemedText } from '@/src/components/themed-text';
 import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { ThemedView } from '@/src/components/themed-view';
+import { AiLoadingOverlay } from '@/src/components/ai-loading-overlay';
 import { useThemeColor } from '@/src/hooks/use-theme-color';
 import { Asset } from "expo-asset";
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Directory, File, Paths } from "expo-file-system";
 
-
 import { v4 } from '@/src/common/uuid';
 import { useRef, useState } from 'react';
 import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
 import MlkitOcr, { MlkitOcrResult } from 'react-native-mlkit-ocr';
+import { getOpenAISettings } from '@/src/services/settings';
+import { extractFromImageWithOpenAI } from '@/src/services/openai';
 
 
 const USE_MOCK = false;
 // const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true";
 
 function fixHourFormat(rawText: string) {
-    // const horaRegex = /(\d{2})[\.\:](\d{2})/;
     const horaRegex = /(\d{2})\s*[:.]\s*(\d{2})/;
-
     const match = rawText.match(horaRegex);
-
     if (match) {
-        const horaCorrigida = `${match[1]}:${match[2]}`;
-        return horaCorrigida;
+        return `${match[1]}:${match[2]}`;
     }
     return null;
 }
+
 function fixDateFormat(rawText: string) {
     const dataRegex = /(\d{1,2})[^\d](\d{1,2})[^\d](\d{2,4})/;
     const match = rawText.match(dataRegex);
-
     if (match) {
-        const dataCorrigida = `${match[1]}/${match[2]}/${match[3]}`;
-        return dataCorrigida;
+        return `${match[1]}/${match[2]}/${match[3]}`;
     }
     return null;
 }
+
 function isValidDate(date: string): boolean {
     if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return false;
     const [day, month, year] = date.split('/').map(Number);
@@ -73,27 +70,38 @@ function formatHourInput(text: string): string {
 async function mockTakePicture() {
     try {
         const asset = Asset.fromModule(require("../../src/assets/mock/sample.jpg"));
-
         await asset.downloadAsync();
-
         const output = new File(Paths.cache, "mock-photo.jpg");
-        try {
-            output.delete()
-        } catch {
-        }
+        try { output.delete(); } catch { }
         const source = new File(asset.localUri!);
         await source.copy(output);
-        console.log('Usando imagem mock')
-        return {
-            uri: output.uri,
-            width: asset.width ?? 1080,
-            height: asset.height ?? 1920,
-        };
+        return { uri: output.uri, width: asset.width ?? 1080, height: asset.height ?? 1920 };
     } catch (error) {
-        console.log(error)
+        console.log(error);
     }
 }
 
+type StepStatus = 'pending' | 'active' | 'done';
+type Step = { label: string; status: StepStatus };
+
+const AI_STEP_LABELS = [
+    'Preparando imagem...',
+    'Enviando para análise...',
+    'Processando resultado...',
+];
+
+function makeSteps(activeIndex: number): Step[] {
+    return AI_STEP_LABELS.map((label, i) => ({
+        label,
+        status: i < activeIndex ? 'done' : i === activeIndex ? 'active' : 'pending',
+    }));
+}
+
+function getConfiancaColor(confianca: number): string {
+    if (confianca >= 80) return '#22c55e';
+    if (confianca >= 50) return '#f59e0b';
+    return '#ef4444';
+}
 
 export default function HomeScreen() {
     const [permission, requestPermission] = useCameraPermissions();
@@ -102,8 +110,14 @@ export default function HomeScreen() {
     const [hour, setHour] = useState('');
     const [uri, setUri] = useState('');
     const [result, setResult] = useState<MlkitOcrResult | undefined>();
+    const [showConfirmation, setShowConfirmation] = useState(false);
     const [cameraKey, setCameraKey] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
+    const [showAiLoading, setShowAiLoading] = useState(false);
+    const [aiSteps, setAiSteps] = useState<Step[]>(makeSteps(0));
+    const [aiConfianca, setAiConfianca] = useState<number | null>(null);
+    const [fallbackNote, setFallbackNote] = useState<string | null>(null);
+
     const createEntryMutation = useCreateTimeEntry();
     const isSaving = createEntryMutation.isPending;
     const tintColor = useThemeColor({}, 'tint');
@@ -112,29 +126,29 @@ export default function HomeScreen() {
     function resetData() {
         setUri('');
         setResult(undefined);
+        setShowConfirmation(false);
         setDate('');
         setHour('');
         setCameraKey(prev => prev + 1);
         setIsLoading(false);
+        setShowAiLoading(false);
+        setAiConfianca(null);
+        setFallbackNote(null);
     }
 
-    async function processImage(uri: string,) {
-        const resultFromUri = await MlkitOcr.detectFromUri(uri);
-        setResult(resultFromUri);
-        const joinedLines = resultFromUri.map(block =>
+    async function processImageWithOcr(imageUri: string) {
+        const ocrResult = await MlkitOcr.detectFromUri(imageUri);
+        setResult(ocrResult);
+        const joinedLines = ocrResult.map(block =>
             block.lines.map(line => line.text).join('')
-        ).join('')
+        ).join('');
         console.log(joinedLines);
         const formattedDate = fixDateFormat(joinedLines);
-        if (formattedDate) {
-            setDate(formattedDate);
-        }
+        if (formattedDate) setDate(formattedDate);
         const formattedHour = fixHourFormat(joinedLines);
-        if (formattedHour) {
-            console.log('Hora corrigida:', formattedHour);
-            setHour(formattedHour);
-        }
+        if (formattedHour) setHour(formattedHour);
     }
+
     if (!permission) {
         return <ThemedView />;
     }
@@ -147,28 +161,58 @@ export default function HomeScreen() {
             </ThemedView>
         );
     }
+
     async function handleTakePicture() {
         if (cameraRef.current && !isLoading) {
             setIsLoading(true);
             try {
+                let photoUri: string;
+
                 if (USE_MOCK) {
                     const photo = await mockTakePicture();
-                    if (!photo) {
-                        setIsLoading(false);
-                        return;
-                    }
-                    setUri(photo.uri);
-                    await processImage(photo.uri);
-                    setDate('27/11/2025')
-                    setHour('13:01')
-                } else {
-                    const photo = await cameraRef.current.takePictureAsync({
-                        quality: 1,
-                        shutterSound: false,
-                    });
+                    if (!photo) { setIsLoading(false); return; }
+                    photoUri = photo.uri;
+                    setUri(photoUri);
+                    setDate('27/11/2025');
+                    setHour('13:01');
+                    setShowConfirmation(true);
+                    return;
+                }
 
-                    setUri(photo.uri);
-                    await processImage(photo.uri);
+                const photo = await cameraRef.current.takePictureAsync({
+                    quality: 1,
+                    shutterSound: false,
+                });
+                photoUri = photo.uri;
+                setUri(photoUri);
+
+                const settings = await getOpenAISettings();
+
+                if (settings.enabled && settings.apiKey) {
+                    setShowAiLoading(true);
+                    setAiSteps(makeSteps(0));
+                    try {
+                        const aiResult = await extractFromImageWithOpenAI(
+                            photoUri,
+                            settings.apiKey,
+                            settings.model,
+                            (step) => setAiSteps(makeSteps(step))
+                        );
+                        setShowAiLoading(false);
+                        if (aiResult.data) setDate(aiResult.data);
+                        if (aiResult.hora) setHour(aiResult.hora);
+                        setAiConfianca(aiResult.confianca ?? null);
+                        setShowConfirmation(true);
+                    } catch (aiError) {
+                        console.warn('OpenAI falhou, usando OCR:', aiError);
+                        setShowAiLoading(false);
+                        setFallbackNote('Análise por IA indisponível. Usando OCR local.');
+                        await processImageWithOcr(photoUri);
+                        setShowConfirmation(true);
+                    }
+                } else {
+                    await processImageWithOcr(photoUri);
+                    setShowConfirmation(true);
                 }
             } catch (error) {
                 console.error('Erro ao processar foto:', error);
@@ -183,60 +227,36 @@ export default function HomeScreen() {
             Alert.alert('Erro', 'Data e hora são obrigatórias');
             return;
         }
-
         if (!isValidDate(date)) {
             Alert.alert('Data inválida', 'Informe a data no formato DD/MM/AAAA com valores válidos.');
             return;
         }
-
         if (!isValidHour(hour)) {
             Alert.alert('Hora inválida', 'Informe a hora no formato HH:MM com valores válidos.');
             return;
         }
-
         if (!uri) {
             Alert.alert('Erro', 'Imagem é obrigatória');
             return;
         }
-
         if (isSaving) return;
 
         try {
             const id = v4();
-            // const file = new File(Paths.document, 'time_entries')
-            // if (file.exists) {
-            //     file.delete()
-
-            // }
-            // 1. Cria ou valida diretório
             const folder = new Directory(Paths.document, 'time_entries');
-
             if (!folder.exists) {
-                await folder.create({
-                    intermediates: true,
-                    idempotent: true
-                });
+                await folder.create({ intermediates: true, idempotent: true });
             }
-
-            // 2. Define arquivo destino
             const destinationFile = new File(folder, `${id}.jpg`);
-
-            // // Se já existir, remover
             if (destinationFile.exists) {
                 await destinationFile.delete();
             }
-
-            // 3. Arquivo origem (foto capturada)
             const sourceFile = new File(uri);
-
             if (!sourceFile.exists) {
                 throw new Error('A imagem capturada não pôde ser localizada.');
             }
-
-            // 4. Copiar arquivo
             await sourceFile.copy(destinationFile);
 
-            // 5. Salvar no DB
             const timeEntry = await createEntryMutation.mutateAsync({
                 id,
                 date,
@@ -244,7 +264,7 @@ export default function HomeScreen() {
                 file_path: destinationFile.uri,
                 created_at: new Date(),
             });
-            console.log(timeEntry)
+            console.log(timeEntry);
             resetData();
             Alert.alert('Sucesso', 'Registro salvo com sucesso!');
         } catch (error: any) {
@@ -254,7 +274,7 @@ export default function HomeScreen() {
     }
 
     return (
-        result ? (
+        showConfirmation ? (
             <KeyboardAvoidingView
                 style={{ flex: 1 }}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -262,19 +282,49 @@ export default function HomeScreen() {
             >
                 <ThemedView style={styles.pictureTakenContainer}>
                     <View style={styles.imageContainer}>
-                        <Pressable style={[styles.resetButton, { backgroundColor: 'rgba(255,255,255,0.85)' }]} onPress={resetData} >
+                        <Pressable style={[styles.resetButton, { backgroundColor: 'rgba(255,255,255,0.85)' }]} onPress={resetData}>
                             <Ionicons name="refresh-outline" size={24} color="black" />
                         </Pressable>
                         <Image source={{ uri }} style={{ width: '100%', height: '100%' }} />
                     </View>
+
+                    {aiConfianca !== null && (
+                        <View style={[styles.confiancaBadge, { backgroundColor: getConfiancaColor(aiConfianca) + '22', borderColor: getConfiancaColor(aiConfianca) }]}>
+                            <ThemedText style={[styles.confiancaText, { color: getConfiancaColor(aiConfianca) }]}>
+                                Confiança da IA: {aiConfianca}%
+                            </ThemedText>
+                        </View>
+                    )}
+
+                    {fallbackNote && (
+                        <View style={[styles.fallbackBanner, { borderColor: '#f59e0b', backgroundColor: '#f59e0b22' }]}>
+                            <Ionicons name="warning-outline" size={14} color="#f59e0b" />
+                            <ThemedText style={[styles.fallbackText, { color: '#f59e0b' }]}>
+                                {fallbackNote}
+                            </ThemedText>
+                        </View>
+                    )}
+
                     <ThemedView style={[styles.form, { borderColor }]}>
                         <ThemedView style={styles.formGroup}>
                             <ThemedText style={styles.label}>Data:</ThemedText>
-                            <ThemedTextInput style={styles.input} value={date} onChangeText={(text) => setDate(formatDateInput(text))} keyboardType="numeric" maxLength={10} />
+                            <ThemedTextInput
+                                style={styles.input}
+                                value={date}
+                                onChangeText={(text) => setDate(formatDateInput(text))}
+                                keyboardType="numeric"
+                                maxLength={10}
+                            />
                         </ThemedView>
                         <ThemedView style={styles.formGroup}>
                             <ThemedText style={styles.label}>Hora:</ThemedText>
-                            <ThemedTextInput style={styles.input} value={hour} onChangeText={(text) => setHour(formatHourInput(text))} keyboardType="numeric" maxLength={5} />
+                            <ThemedTextInput
+                                style={styles.input}
+                                value={hour}
+                                onChangeText={(text) => setHour(formatHourInput(text))}
+                                keyboardType="numeric"
+                                maxLength={5}
+                            />
                         </ThemedView>
                         <Pressable
                             style={[styles.button, { backgroundColor: tintColor }, isSaving && styles.buttonDisabled]}
@@ -299,12 +349,13 @@ export default function HomeScreen() {
                     ref={cameraRef}
                     mute={true}
                 />
-                {isLoading && (
+                {isLoading && !showAiLoading && (
                     <View style={styles.loadingOverlay}>
                         <ActivityIndicator size="large" color="#0a7ea4" />
                         <ThemedText style={styles.loadingText}>Processando imagem...</ThemedText>
                     </View>
                 )}
+                {showAiLoading && <AiLoadingOverlay steps={aiSteps} />}
                 <Pressable
                     style={[styles.cameraButton, { backgroundColor: tintColor }, isLoading && styles.cameraButtonDisabled]}
                     onPress={handleTakePicture}
@@ -348,6 +399,32 @@ const styles = StyleSheet.create({
         zIndex: 1000,
         backgroundColor: 'white'
     },
+    confiancaBadge: {
+        alignSelf: 'stretch',
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        alignItems: 'center',
+    },
+    confiancaText: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    fallbackBanner: {
+        alignSelf: 'stretch',
+        borderWidth: 1,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    fallbackText: {
+        fontSize: 12,
+        flex: 1,
+    },
     form: {
         borderWidth: 1,
         borderRadius: 5,
@@ -384,12 +461,6 @@ const styles = StyleSheet.create({
         width: '100%',
         height: '100%',
     },
-    buttonContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        marginBottom: 20,
-    },
     label: {
         minWidth: 48,
     },
@@ -417,12 +488,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
     },
-    text: {
-        color: 'red'
-    },
-    message: {
-        color: 'red'
-    },
     loadingOverlay: {
         position: 'absolute',
         top: 0,
@@ -441,5 +506,4 @@ const styles = StyleSheet.create({
     cameraButtonDisabled: {
         opacity: 0.5,
     },
-})
-
+});

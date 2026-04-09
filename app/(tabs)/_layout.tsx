@@ -30,6 +30,13 @@ export default function TabLayout() {
                     tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
                 }}
             />
+            <Tabs.Screen
+                name="settings"
+                options={{
+                    title: 'Configurações',
+                    tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape.fill" color={color} />,
+                }}
+            />
         </Tabs>
     );
 }
