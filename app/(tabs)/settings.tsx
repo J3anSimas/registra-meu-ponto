@@ -14,6 +14,8 @@ import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { ThemedView } from '@/src/components/themed-view';
 import { useThemeColor } from '@/src/hooks/use-theme-color';
 import {
+  IMAGE_QUALITY_OPTIONS,
+  ImageQuality,
   OPENAI_MODELS,
   OpenAIModel,
   getOpenAISettings,
@@ -28,6 +30,7 @@ export default function SettingsScreen() {
   const [enabled, setEnabled] = useState(false);
   const [model, setModel] = useState<OpenAIModel>('gpt-4o-mini');
   const [apiKey, setApiKey] = useState('');
+  const [imageQuality, setImageQuality] = useState<ImageQuality>(0.8);
   const [saving, setSaving] = useState(false);
 
   useFocusEffect(
@@ -36,6 +39,7 @@ export default function SettingsScreen() {
         setEnabled(s.enabled);
         setModel(s.model);
         setApiKey(s.apiKey);
+        setImageQuality(s.imageQuality);
       });
     }, [])
   );
@@ -47,7 +51,7 @@ export default function SettingsScreen() {
     }
     setSaving(true);
     try {
-      await saveOpenAISettings({ enabled, model, apiKey: apiKey.trim() });
+      await saveOpenAISettings({ enabled, model, apiKey: apiKey.trim(), imageQuality });
       Alert.alert('Configurações salvas', 'As configurações foram salvas com sucesso.');
     } catch {
       Alert.alert('Erro', 'Não foi possível salvar as configurações.');
@@ -118,6 +122,44 @@ export default function SettingsScreen() {
                       ]}
                     >
                       {m.label}
+                    </ThemedText>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: icon + '22' }]} />
+
+              {/* Qualidade da imagem */}
+              <ThemedText style={styles.label}>Qualidade da imagem</ThemedText>
+              <ThemedText style={[styles.hint, { color: icon }]}>
+                Imagens maiores melhoram o reconhecimento, mas aumentam o tempo e o custo
+              </ThemedText>
+              <View style={styles.modelList}>
+                {IMAGE_QUALITY_OPTIONS.map((q) => (
+                  <TouchableOpacity
+                    key={q.value}
+                    style={[
+                      styles.modelOption,
+                      { borderColor: imageQuality === q.value ? tint : icon + '44' },
+                      imageQuality === q.value && { backgroundColor: tint + '18' },
+                    ]}
+                    onPress={() => setImageQuality(q.value)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.modelRadio}>
+                      <View style={[styles.radioOuter, { borderColor: imageQuality === q.value ? tint : icon }]}>
+                        {imageQuality === q.value && (
+                          <View style={[styles.radioInner, { backgroundColor: tint }]} />
+                        )}
+                      </View>
+                    </View>
+                    <ThemedText
+                      style={[
+                        styles.modelLabel,
+                        imageQuality === q.value && { color: tint, fontWeight: '600' },
+                      ]}
+                    >
+                      {q.label}
                     </ThemedText>
                   </TouchableOpacity>
                 ))}

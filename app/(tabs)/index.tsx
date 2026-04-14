@@ -196,6 +196,7 @@ export default function HomeScreen() {
                             photoUri,
                             settings.apiKey,
                             settings.model,
+                            settings.imageQuality,
                             (step) => setAiSteps(makeSteps(step))
                         );
                         setShowAiLoading(false);
@@ -203,10 +204,11 @@ export default function HomeScreen() {
                         if (aiResult.hora) setHour(aiResult.hora);
                         setAiConfianca(aiResult.confianca ?? null);
                         setShowConfirmation(true);
-                    } catch (aiError) {
-                        console.warn('OpenAI falhou, usando OCR:', aiError);
+                    } catch (aiError: any) {
+                        console.error('OpenAI falhou:', aiError);
                         setShowAiLoading(false);
-                        setFallbackNote('Análise por IA indisponível. Usando OCR local.');
+                        const errorMsg = aiError?.message ?? String(aiError);
+                        setFallbackNote(`IA indisponível (${errorMsg.slice(0, 80)}). Usando OCR local.`);
                         await processImageWithOcr(photoUri);
                         setShowConfirmation(true);
                     }

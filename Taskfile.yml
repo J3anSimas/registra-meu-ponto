@@ -1,0 +1,25 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Build completo e deploy no dispositivo
+    cmds:
+      - task: prebuild
+      - task: assemble
+      - task: deploy
+
+  prebuild:
+    desc: Gera os arquivos nativos Android via Expo
+    cmds:
+      - npx expo prebuild --platform android
+
+  assemble:
+    desc: Compila o APK de release via Gradle
+    dir: android
+    cmds:
+      - gradlew.bat assembleRelease
+
+  deploy:
+    desc: Envia o APK para a pasta Download do dispositivo via ADB
+    cmds:
+      - adb push ./android/app/build/outputs/apk/release/app-release.apk sdcard/Download
