@@ -13,31 +13,14 @@ import { Directory, File, Paths } from "expo-file-system";
 import { v4 } from '@/src/common/uuid';
 import { useRef, useState } from 'react';
 import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
-import MlkitOcr, { MlkitOcrResult } from 'react-native-mlkit-ocr';
-import { getOpenAISettings } from '@/src/services/settings';
+import { extractFromImageLocally } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
+import { getOpenAISettings } from '@/src/services/settings';
+import { preprocessForOcr } from '@/src/services/image-preprocess';
 
 
 const USE_MOCK = false;
 // const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true";
-
-function fixHourFormat(rawText: string) {
-    const horaRegex = /(\d{2})\s*[:.]\s*(\d{2})/;
-    const match = rawText.match(horaRegex);
-    if (match) {
-        return `${match[1]}:${match[2]}`;
-    }
-    return null;
-}
-
-function fixDateFormat(rawText: string) {
-    const dataRegex = /(\d{1,2})[^\d](\d{1,2})[^\d](\d{2,4})/;
-    const match = rawText.match(dataRegex);
-    if (match) {
-        return `${match[1]}/${match[2]}/${match[3]}`;
-    }
-    return null;
-}
 
 function isValidDate(date: string): boolean {
     if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return false;
@@ -84,14 +67,20 @@ async function mockTakePicture() {
 type StepStatus = 'pending' | 'active' | 'done';
 type Step = { label: string; status: StepStatus };
 
-const AI_STEP_LABELS = [
-    'Preparando imagem...',
+const LOCAL_STEP_LABELS = [
+    'Pré-processando imagem...',
+    'Executando OCR on-device...',
+    'Extraindo data e hora...',
+];
+
+const OPENAI_STEP_LABELS = [
+    'Pré-processando imagem...',
     'Enviando para análise...',
     'Processando resultado...',
 ];
 
-function makeSteps(activeIndex: number): Step[] {
-    return AI_STEP_LABELS.map((label, i) => ({
+function makeSteps(labels: string[], activeIndex: number): Step[] {
+    return labels.map((label, i) => ({
         label,
         status: i < activeIndex ? 'done' : i === activeIndex ? 'active' : 'pending',
     }));
@@ -109,14 +98,12 @@ export default function HomeScreen() {
     const [date, setDate] = useState('');
     const [hour, setHour] = useState('');
     const [uri, setUri] = useState('');
-    const [result, setResult] = useState<MlkitOcrResult | undefined>();
     const [showConfirmation, setShowConfirmation] = useState(false);
     const [cameraKey, setCameraKey] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
     const [showAiLoading, setShowAiLoading] = useState(false);
-    const [aiSteps, setAiSteps] = useState<Step[]>(makeSteps(0));
+    const [aiSteps, setAiSteps] = useState<Step[]>(makeSteps(LOCAL_STEP_LABELS, 0));
     const [aiConfianca, setAiConfianca] = useState<number | null>(null);
-    const [fallbackNote, setFallbackNote] = useState<string | null>(null);
 
     const createEntryMutation = useCreateTimeEntry();
     const isSaving = createEntryMutation.isPending;
@@ -125,7 +112,6 @@ export default function HomeScreen() {
 
     function resetData() {
         setUri('');
-        setResult(undefined);
         setShowConfirmation(false);
         setDate('');
         setHour('');
@@ -133,20 +119,6 @@ export default function HomeScreen() {
         setIsLoading(false);
         setShowAiLoading(false);
         setAiConfianca(null);
-        setFallbackNote(null);
-    }
-
-    async function processImageWithOcr(imageUri: string) {
-        const ocrResult = await MlkitOcr.detectFromUri(imageUri);
-        setResult(ocrResult);
-        const joinedLines = ocrResult.map(block =>
-            block.lines.map(line => line.text).join('')
-        ).join('');
-        console.log(joinedLines);
-        const formattedDate = fixDateFormat(joinedLines);
-        if (formattedDate) setDate(formattedDate);
-        const formattedHour = fixHourFormat(joinedLines);
-        if (formattedHour) setHour(formattedHour);
     }
 
     if (!permission) {
@@ -187,33 +159,40 @@ export default function HomeScreen() {
                 setUri(photoUri);
 
                 const settings = await getOpenAISettings();
+                const useOpenAI = settings.enabled && !!settings.apiKey;
+                const stepLabels = useOpenAI ? OPENAI_STEP_LABELS : LOCAL_STEP_LABELS;
 
-                if (settings.enabled && settings.apiKey) {
-                    setShowAiLoading(true);
-                    setAiSteps(makeSteps(0));
-                    try {
+                setShowAiLoading(true);
+                setAiSteps(makeSteps(stepLabels, 0));
+                try {
+                    const preprocessedUri = await preprocessForOcr(photoUri);
+                    setAiSteps(makeSteps(stepLabels, 1));
+
+                    if (useOpenAI) {
                         const aiResult = await extractFromImageWithOpenAI(
-                            photoUri,
+                            preprocessedUri,
                             settings.apiKey,
                             settings.model,
                             settings.imageQuality,
-                            (step) => setAiSteps(makeSteps(step))
+                            (step) => setAiSteps(makeSteps(stepLabels, step === 0 ? 1 : step + 1))
                         );
                         setShowAiLoading(false);
                         if (aiResult.data) setDate(aiResult.data);
                         if (aiResult.hora) setHour(aiResult.hora);
                         setAiConfianca(aiResult.confianca ?? null);
                         setShowConfirmation(true);
-                    } catch (aiError: any) {
-                        console.error('OpenAI falhou:', aiError);
+                    } else {
+                        const ocrResult = await extractFromImageLocally(preprocessedUri);
+                        setAiSteps(makeSteps(stepLabels, 2));
                         setShowAiLoading(false);
-                        const errorMsg = aiError?.message ?? String(aiError);
-                        setFallbackNote(`IA indisponível (${errorMsg.slice(0, 80)}). Usando OCR local.`);
-                        await processImageWithOcr(photoUri);
+                        if (ocrResult.data) setDate(ocrResult.data);
+                        if (ocrResult.hora) setHour(ocrResult.hora);
+                        setAiConfianca(ocrResult.confianca);
                         setShowConfirmation(true);
                     }
-                } else {
-                    await processImageWithOcr(photoUri);
+                } catch (ocrError: any) {
+                    console.error('OCR falhou:', ocrError);
+                    setShowAiLoading(false);
                     setShowConfirmation(true);
                 }
             } catch (error) {
@@ -293,16 +272,7 @@ export default function HomeScreen() {
                     {aiConfianca !== null && (
                         <View style={[styles.confiancaBadge, { backgroundColor: getConfiancaColor(aiConfianca) + '22', borderColor: getConfiancaColor(aiConfianca) }]}>
                             <ThemedText style={[styles.confiancaText, { color: getConfiancaColor(aiConfianca) }]}>
-                                Confiança da IA: {aiConfianca}%
-                            </ThemedText>
-                        </View>
-                    )}
-
-                    {fallbackNote && (
-                        <View style={[styles.fallbackBanner, { borderColor: '#f59e0b', backgroundColor: '#f59e0b22' }]}>
-                            <Ionicons name="warning-outline" size={14} color="#f59e0b" />
-                            <ThemedText style={[styles.fallbackText, { color: '#f59e0b' }]}>
-                                {fallbackNote}
+                                Confiança do OCR: {aiConfianca}%
                             </ThemedText>
                         </View>
                     )}

@@ -20,7 +20,7 @@ export function AiLoadingOverlay({ steps }: Props) {
   return (
     <View style={[styles.overlay, { backgroundColor: background + 'F0' }]}>
       <View style={[styles.card, { backgroundColor: background }]}>
-        <ThemedText style={styles.title}>Analisando com IA</ThemedText>
+        <ThemedText style={styles.title}>Reconhecendo texto</ThemedText>
 
         <View style={styles.steps}>
           {steps.map((step, index) => (
