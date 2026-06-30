@@ -71,6 +71,40 @@ function reorientToUpright(image: SkImage, exifOrientation?: number): SkImage {
     return surface.makeImageSnapshot();
 }
 
+const STORAGE_MAX_DIMENSION = 1280;
+const STORAGE_JPEG_QUALITY = 0.6;
+
+/**
+ * Re-encoda a imagem para armazenamento de longo prazo: limita a maior dimensão a
+ * STORAGE_MAX_DIMENSION e comprime como JPEG. A foto sai do sensor em ~4080×3060 e o
+ * recorte é gravado como PNG sem perdas; como a imagem só serve de referência visual do
+ * comprovante, isso reduz o arquivo de vários MB para algumas centenas de KB.
+ *
+ * Não usar no caminho de OCR — a perda de qualidade prejudica a extração de texto.
+ *
+ * @example const stored = await compressForStorage(croppedUri)
+ */
+export async function compressForStorage(uri: string): Promise<string> {
+    const data = await Skia.Data.fromURI(uri);
+    const image = Skia.Image.MakeImageFromEncoded(data);
+    if (!image) {
+        throw new Error(`Não foi possível decodificar a imagem para compressão: ${uri}`);
+    }
+
+    const srcW = image.width();
+    const srcH = image.height();
+    const longestEdge = Math.max(srcW, srcH);
+    const actions = longestEdge > STORAGE_MAX_DIMENSION
+        ? [{ resize: srcW >= srcH ? { width: STORAGE_MAX_DIMENSION } : { height: STORAGE_MAX_DIMENSION } }]
+        : [];
+
+    const result = await manipulateAsync(uri, actions, {
+        compress: STORAGE_JPEG_QUALITY,
+        format: SaveFormat.JPEG,
+    });
+    return result.uri;
+}
+
 export async function cropToGuide(uri: string, region: GuideRegion, exifOrientation?: number): Promise<string> {
     const data = await Skia.Data.fromURI(uri);
     const decoded = Skia.Image.MakeImageFromEncoded(data);

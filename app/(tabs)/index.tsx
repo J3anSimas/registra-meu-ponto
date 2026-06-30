@@ -19,7 +19,7 @@ import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
 import { extractFromImageLocally } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
 import { getOpenAISettings } from '@/src/services/settings';
-import { cropToGuide, normalizeOrientation, preprocessForOcr } from '@/src/services/image-preprocess';
+import { compressForStorage, cropToGuide, normalizeOrientation, preprocessForOcr } from '@/src/services/image-preprocess';
 
 
 const USE_MOCK = false;
@@ -256,10 +256,12 @@ export default function HomeScreen() {
             if (destinationFile.exists) {
                 await destinationFile.delete();
             }
-            const sourceFile = new File(uri);
-            if (!sourceFile.exists) {
+            const capturedFile = new File(uri);
+            if (!capturedFile.exists) {
                 throw new Error('A imagem capturada não pôde ser localizada.');
             }
+            const compressedUri = await compressForStorage(uri);
+            const sourceFile = new File(compressedUri);
             await sourceFile.copy(destinationFile);
 
             const timeEntry = await createEntryMutation.mutateAsync({
