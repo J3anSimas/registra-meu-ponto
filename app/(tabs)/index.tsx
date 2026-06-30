@@ -16,7 +16,8 @@ import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
-import { extractFromImageLocally } from '@/src/services/ocr';
+import { useReceiptAutodetect } from '@/src/hooks/use-receipt-autodetect';
+import { extractFromImageLocally, isValidDate } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
 import { getOpenAISettings } from '@/src/services/settings';
 import { compressForStorage, cropToGuide, preprocessForOcr } from '@/src/services/image-preprocess';
@@ -24,15 +25,6 @@ import { compressForStorage, cropToGuide, preprocessForOcr } from '@/src/service
 
 const USE_MOCK = false;
 // const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK_CAMERA === "true";
-
-function isValidDate(date: string): boolean {
-    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(date)) return false;
-    const [day, month, year] = date.split('/').map(Number);
-    if (month < 1 || month > 12) return false;
-    if (day < 1 || day > 31) return false;
-    const daysInMonth = new Date(year, month, 0).getDate();
-    return day <= daysInMonth;
-}
 
 function isValidHour(hour: string): boolean {
     if (!/^\d{2}:\d{2}$/.test(hour)) return false;
@@ -125,6 +117,18 @@ export default function HomeScreen() {
     const tintColor = useThemeColor({}, 'tint');
     const borderColor = useThemeColor({}, 'icon');
 
+    // Dispara a captura a partir do autodetect. Mantida em ref porque handleTakePicture
+    // só é declarada após os returns de permissão, depois dos hooks.
+    const triggerCaptureRef = useRef<() => void>(() => {});
+    const autodetectEnabled = !!permission?.granted && !USE_MOCK && !isLoading && !showConfirmation;
+    const { detected } = useReceiptAutodetect({
+        cameraRef,
+        viewWidth: effectiveWidth,
+        viewHeight: effectiveHeight,
+        enabled: autodetectEnabled,
+        onDetected: () => triggerCaptureRef.current(),
+    });
+
     function resetData() {
         setUri('');
         setShowConfirmation(false);
@@ -148,6 +152,8 @@ export default function HomeScreen() {
             </ThemedView>
         );
     }
+
+    triggerCaptureRef.current = handleTakePicture;
 
     async function handleTakePicture() {
         if (cameraRef.current && !isLoading) {
@@ -360,6 +366,7 @@ export default function HomeScreen() {
                     <CameraGuideOverlay
                         containerWidth={effectiveWidth}
                         containerHeight={effectiveHeight}
+                        detected={detected}
                     />
                 )}
                 {isLoading && !showAiLoading && (

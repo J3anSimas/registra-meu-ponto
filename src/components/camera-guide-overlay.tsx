@@ -6,6 +6,7 @@ const GUIDE_WIDTH_FRACTION = 0.82;
 const CORNER_SIZE = 26;
 const CORNER_THICKNESS = 3;
 const CORNER_COLOR = '#ffffff';
+const CORNER_COLOR_DETECTED = '#22c55e';
 const MASK_COLOR = 'rgba(0,0,0,0.55)';
 
 export type GuideRegion = {
@@ -31,9 +32,11 @@ export function computeGuideRegion(containerWidth: number, containerHeight: numb
 type CameraGuideOverlayProps = {
     containerWidth?: number;
     containerHeight?: number;
+    // Quando true, sinaliza que o comprovante foi detectado (cantos verdes + texto).
+    detected?: boolean;
 };
 
-export function CameraGuideOverlay({ containerWidth, containerHeight }: CameraGuideOverlayProps) {
+export function CameraGuideOverlay({ containerWidth, containerHeight, detected = false }: CameraGuideOverlayProps) {
     const windowDims = useWindowDimensions();
     const screenWidth = containerWidth || windowDims.width;
     const screenHeight = containerHeight || windowDims.height;
@@ -44,6 +47,8 @@ export function CameraGuideOverlay({ containerWidth, containerHeight }: CameraGu
     // Desloca ligeiramente para cima para deixar espaço ao botão da câmera
     const topMargin = (screenHeight - guideHeight) / 2 - 30;
 
+    const cornerColor = detected ? CORNER_COLOR_DETECTED : CORNER_COLOR;
+
     return (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
             <View style={{ height: topMargin, backgroundColor: MASK_COLOR }} />
@@ -52,17 +57,19 @@ export function CameraGuideOverlay({ containerWidth, containerHeight }: CameraGu
                 <View style={{ width: sideMargin, backgroundColor: MASK_COLOR }} />
 
                 <View style={{ width: guideWidth, height: guideHeight }}>
-                    <View style={[styles.corner, styles.topLeft]} />
-                    <View style={[styles.corner, styles.topRight]} />
-                    <View style={[styles.corner, styles.bottomLeft]} />
-                    <View style={[styles.corner, styles.bottomRight]} />
+                    <View style={[styles.corner, styles.topLeft, { borderColor: cornerColor }]} />
+                    <View style={[styles.corner, styles.topRight, { borderColor: cornerColor }]} />
+                    <View style={[styles.corner, styles.bottomLeft, { borderColor: cornerColor }]} />
+                    <View style={[styles.corner, styles.bottomRight, { borderColor: cornerColor }]} />
                 </View>
 
                 <View style={{ width: sideMargin, backgroundColor: MASK_COLOR }} />
             </View>
 
             <View style={styles.bottomMask}>
-                <Text style={styles.hint}>Centralize o comprovante na área marcada</Text>
+                <Text style={styles.hint}>
+                    {detected ? 'Comprovante detectado!' : 'Centralize o comprovante — detecção automática'}
+                </Text>
             </View>
         </View>
     );
