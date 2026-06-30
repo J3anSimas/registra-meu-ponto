@@ -19,7 +19,7 @@ import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
 import { extractFromImageLocally } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
 import { getOpenAISettings } from '@/src/services/settings';
-import { compressForStorage, cropToGuide, normalizeOrientation, preprocessForOcr } from '@/src/services/image-preprocess';
+import { compressForStorage, cropToGuide, preprocessForOcr } from '@/src/services/image-preprocess';
 
 
 const USE_MOCK = false;
@@ -175,13 +175,11 @@ export default function HomeScreen() {
                     shutterSound: false,
                     exif: true,
                 });
-                // Achata a orientação EXIF (cobre 90° e 180°) antes de o Skia decodificar.
-                const orientedUri = await normalizeOrientation(photo.uri);
                 const guideRegion = computeGuideRegion(effectiveWidth, effectiveHeight);
                 // Passa as dimensões da view para mapear a guia (frações da tela) para os
-                // pixels da foto, compensando o "cover" do preview da câmera.
-                // exif só dá a direção de giro caso o manipulator não achate em algum aparelho.
-                photoUri = await cropToGuide(orientedUri, guideRegion, effectiveWidth, effectiveHeight, photo.exif?.Orientation);
+                // pixels da foto, compensando o "cover" do preview da câmera. cropToGuide
+                // corrige só paisagem (90°) via dimensão; o EXIF dá a direção do giro.
+                photoUri = await cropToGuide(photo.uri, guideRegion, effectiveWidth, effectiveHeight, photo.exif?.Orientation);
                 setUri(photoUri);
 
                 const settings = await getOpenAISettings();

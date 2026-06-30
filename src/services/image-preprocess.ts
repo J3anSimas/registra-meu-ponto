@@ -21,28 +21,15 @@ function contrastMatrix(factor: number): number[] {
 }
 
 /**
- * Aplica a orientação EXIF aos pixels e devolve uma cópia com EXIF neutro ("baked").
- *
- * Necessário porque o Skia decodifica de forma ambígua entre aparelhos (uns consomem a
- * tag EXIF, outros não) e porque a heurística por dimensão de `reorientToUpright` não
- * detecta rotação de 180° — a foto continua portrait, só de cabeça para baixo. O
- * expo-image-manipulator achata a orientação de forma determinística ao re-encodar,
- * cobrindo 90° e 180° em qualquer aparelho.
- *
- * @example const upright = await normalizeOrientation(photo.uri)
- */
-export async function normalizeOrientation(uri: string): Promise<string> {
-    const result = await manipulateAsync(uri, [], { compress: 1, format: SaveFormat.JPEG });
-    return result.uri;
-}
-
-/**
  * Garante que a imagem decodificada fique em portrait ("upright").
  *
  * Decisão baseada na DIMENSÃO que o Skia realmente decodificou, não na tag EXIF: em
  * alguns aparelhos o Skia já consome o EXIF e devolve a imagem de pé (3060×4080), então
  * reaplicar a rotação da tag a deitaria de novo. Como o comprovante é sempre fotografado
  * com o telefone em pé, o alvo é portrait — só corrigimos quando vier em paisagem.
+ *
+ * Cobre apenas paisagem (90°/270°): uma foto portrait de cabeça para baixo (180°) tem
+ * a mesma dimensão de uma portrait correta e não é tratada aqui por decisão de produto.
  *
  * A tag EXIF é usada apenas para escolher a direção do giro de 90° (8 = anti-horário;
  * 6/ausente = horário, o caso comum da câmera traseira).
