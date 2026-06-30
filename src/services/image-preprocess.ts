@@ -167,53 +167,6 @@ export async function cropToGuide(
     return outFile.uri;
 }
 
-const SCAN_MAX_DIMENSION = 1024;
-
-/**
- * Pré-processamento leve para a varredura de autodetecção: reduz o recorte para no máximo
- * SCAN_MAX_DIMENSION antes do grayscale/contraste, deixando o OCR on-device bem mais rápido
- * (o custo do OCR cresce com o número de pixels). A data — único alvo da varredura — segue
- * legível nessa resolução. A captura final continua usando preprocessForOcr, sem perda.
- *
- * @example const fast = await preprocessForScan(croppedUri)
- */
-export async function preprocessForScan(uri: string): Promise<string> {
-  const data = await Skia.Data.fromURI(uri);
-  const image = Skia.Image.MakeImageFromEncoded(data);
-  if (!image) {
-    throw new Error(`Não foi possível decodificar a imagem para varredura: ${uri}`);
-  }
-
-  const srcW = image.width();
-  const srcH = image.height();
-  const longestEdge = Math.max(srcW, srcH);
-  const scale = longestEdge > SCAN_MAX_DIMENSION ? SCAN_MAX_DIMENSION / longestEdge : 1;
-  const dstW = Math.round(srcW * scale);
-  const dstH = Math.round(srcH * scale);
-
-  const surface = Skia.Surface.MakeOffscreen(dstW, dstH);
-  if (!surface) {
-    throw new Error('Falha ao alocar superfície de varredura.');
-  }
-
-  const canvas = surface.getCanvas();
-  const paint = Skia.Paint();
-  const grayFilter = Skia.ColorFilter.MakeMatrix(GRAYSCALE_MATRIX);
-  const contrastFilter = Skia.ColorFilter.MakeMatrix(contrastMatrix(1.6));
-  paint.setColorFilter(Skia.ColorFilter.MakeCompose(contrastFilter, grayFilter));
-  canvas.drawImageRect(image, Skia.XYWHRect(0, 0, srcW, srcH), Skia.XYWHRect(0, 0, dstW, dstH), paint);
-
-  const bytes = surface.makeImageSnapshot().encodeToBytes();
-  const outFile = new File(Paths.cache, `ocr-scan-${Date.now()}.png`);
-  if (outFile.exists) {
-    outFile.delete();
-  }
-  outFile.create();
-  outFile.write(bytes);
-
-  return outFile.uri;
-}
-
 export async function preprocessForOcr(uri: string): Promise<string> {
   const data = await Skia.Data.fromURI(uri);
   const image = Skia.Image.MakeImageFromEncoded(data);

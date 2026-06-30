@@ -17,7 +17,6 @@ import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
 import { timeEntryExists } from '@/src/db';
-import { useReceiptAutodetect } from '@/src/hooks/use-receipt-autodetect';
 import { extractFromImageLocally, isValidDate } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
 import { getOpenAISettings } from '@/src/services/settings';
@@ -88,11 +87,6 @@ function getConfiancaColor(confianca: number): string {
     return '#ef4444';
 }
 
-// Janela de detecção automática iniciada pelo usuário. Limitada no tempo porque o polling
-// de OCR é custoso (captura frame + crop + OCR a cada 250ms); 15s bastam para enquadrar o
-// comprovante sem manter a câmera varrendo indefinidamente.
-const SCAN_DURATION_S = 15;
-
 export default function HomeScreen() {
     const [permission, requestPermission] = useCameraPermissions();
     const cameraRef = useRef<CameraView | null>(null);
@@ -105,49 +99,14 @@ export default function HomeScreen() {
     const [showAiLoading, setShowAiLoading] = useState(false);
     const [aiSteps, setAiSteps] = useState<Step[]>(makeSteps(LOCAL_STEP_LABELS, 0));
     const [aiConfianca, setAiConfianca] = useState<number | null>(null);
-    const [isScanning, setIsScanning] = useState(false);
-    const [scanSecondsLeft, setScanSecondsLeft] = useState(0);
-    const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    const stopScan = useCallback(() => {
-        if (scanTimerRef.current) {
-            clearInterval(scanTimerRef.current);
-            scanTimerRef.current = null;
-        }
-        setIsScanning(false);
-        setScanSecondsLeft(0);
-    }, []);
-
-    // Liga a varredura automática por SCAN_DURATION_S segundos; um tick por segundo atualiza o
-    // contador na UI e desliga sozinho ao chegar a zero, sem precisar de um segundo timer.
-    const startScan = useCallback(() => {
-        if (scanTimerRef.current) clearInterval(scanTimerRef.current);
-        setIsScanning(true);
-        setScanSecondsLeft(SCAN_DURATION_S);
-        scanTimerRef.current = setInterval(() => {
-            setScanSecondsLeft(prev => {
-                if (prev <= 1) {
-                    if (scanTimerRef.current) {
-                        clearInterval(scanTimerRef.current);
-                        scanTimerRef.current = null;
-                    }
-                    setIsScanning(false);
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    }, []);
 
     // Mantém a UI em portrait enquanto a Home está focada. NÃO chamamos unlockAsync
     // no cleanup: ao destravar a orientação, o expo-camera passa a produzir fotos na
     // orientação física do aparelho (landscape se inclinado), o que desalinha a guia e
     // o cropToGuide. O app.json já força "orientation": "portrait" nas demais telas.
-    // Ao sair da tela paramos qualquer varredura em andamento para não vazar o timer.
     useFocusEffect(useCallback(() => {
         ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
-        return () => stopScan();
-    }, [stopScan]));
+    }, []));
 
     const windowDims = useWindowDimensions();
     const [cameraViewSize, setCameraViewSize] = useState({ width: 0, height: 0 });
@@ -158,20 +117,7 @@ export default function HomeScreen() {
     const tintColor = useThemeColor({}, 'tint');
     const borderColor = useThemeColor({}, 'icon');
 
-    // Dispara a captura a partir do autodetect. Mantida em ref porque handleTakePicture
-    // só é declarada após os returns de permissão, depois dos hooks.
-    const triggerCaptureRef = useRef<() => void>(() => {});
-    const autodetectEnabled = isScanning && !!permission?.granted && !USE_MOCK && !isLoading && !showConfirmation;
-    const { detected } = useReceiptAutodetect({
-        cameraRef,
-        viewWidth: effectiveWidth,
-        viewHeight: effectiveHeight,
-        enabled: autodetectEnabled,
-        onDetected: () => triggerCaptureRef.current(),
-    });
-
     function resetData() {
-        stopScan();
         setUri('');
         setShowConfirmation(false);
         setDate('');
@@ -195,11 +141,8 @@ export default function HomeScreen() {
         );
     }
 
-    triggerCaptureRef.current = handleTakePicture;
-
     async function handleTakePicture() {
         if (cameraRef.current && !isLoading) {
-            stopScan();
             setIsLoading(true);
             try {
                 let photoUri: string;
@@ -414,7 +357,6 @@ export default function HomeScreen() {
                     <CameraGuideOverlay
                         containerWidth={effectiveWidth}
                         containerHeight={effectiveHeight}
-                        detected={detected}
                     />
                 )}
                 {isLoading && !showAiLoading && (
@@ -424,17 +366,6 @@ export default function HomeScreen() {
                     </View>
                 )}
                 {showAiLoading && <AiLoadingOverlay steps={aiSteps} />}
-                {!isLoading && (
-                    <Pressable
-                        style={[styles.scanButton, { backgroundColor: isScanning ? '#ef4444' : tintColor }]}
-                        onPress={isScanning ? stopScan : startScan}
-                    >
-                        <Ionicons name={isScanning ? 'stop-circle-outline' : 'scan-outline'} size={20} color="white" />
-                        <ThemedText style={styles.scanButtonText}>
-                            {isScanning ? `Detectando... ${scanSecondsLeft}s (toque para parar)` : 'Detectar automaticamente'}
-                        </ThemedText>
-                    </Pressable>
-                )}
                 <Pressable
                     style={[styles.cameraButton, { backgroundColor: tintColor }, isLoading && styles.cameraButtonDisabled]}
                     onPress={handleTakePicture}
@@ -561,22 +492,6 @@ const styles = StyleSheet.create({
         height: 70,
         alignItems: 'center',
         justifyContent: 'center',
-    },
-    scanButton: {
-        position: 'absolute',
-        bottom: 105,
-        alignSelf: 'center',
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        paddingHorizontal: 18,
-        paddingVertical: 12,
-        borderRadius: 24,
-    },
-    scanButtonText: {
-        color: 'white',
-        fontSize: 14,
-        fontWeight: '600',
     },
     buttonText: {
         color: 'white',
