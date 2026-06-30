@@ -5,13 +5,16 @@ import { ThemedText } from '@/src/components/themed-text';
 import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { ThemedView } from '@/src/components/themed-view';
 import { AiLoadingOverlay } from '@/src/components/ai-loading-overlay';
+import { CameraGuideOverlay } from '@/src/components/camera-guide-overlay';
 import { useThemeColor } from '@/src/hooks/use-theme-color';
 import { Asset } from "expo-asset";
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Directory, File, Paths } from "expo-file-system";
 
 import { v4 } from '@/src/common/uuid';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
 import { extractFromImageLocally } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
@@ -104,6 +107,11 @@ export default function HomeScreen() {
     const [showAiLoading, setShowAiLoading] = useState(false);
     const [aiSteps, setAiSteps] = useState<Step[]>(makeSteps(LOCAL_STEP_LABELS, 0));
     const [aiConfianca, setAiConfianca] = useState<number | null>(null);
+
+    useFocusEffect(useCallback(() => {
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        return () => ScreenOrientation.unlockAsync();
+    }, []));
 
     const createEntryMutation = useCreateTimeEntry();
     const isSaving = createEntryMutation.isPending;
@@ -321,6 +329,7 @@ export default function HomeScreen() {
                     ref={cameraRef}
                     mute={true}
                 />
+                {!isLoading && <CameraGuideOverlay />}
                 {isLoading && !showAiLoading && (
                     <View style={styles.loadingOverlay}>
                         <ActivityIndicator size="large" color="#0a7ea4" />
