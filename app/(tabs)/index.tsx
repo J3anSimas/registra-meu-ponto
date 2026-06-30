@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Alert, Button, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Button, Image, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 
 import { ThemedText } from '@/src/components/themed-text';
 import { ThemedTextInput } from '@/src/components/themed-text-input';
 import { ThemedView } from '@/src/components/themed-view';
 import { AiLoadingOverlay } from '@/src/components/ai-loading-overlay';
-import { CameraGuideOverlay } from '@/src/components/camera-guide-overlay';
+import { CameraGuideOverlay, computeGuideRegion } from '@/src/components/camera-guide-overlay';
 import { useThemeColor } from '@/src/hooks/use-theme-color';
 import { Asset } from "expo-asset";
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -19,7 +19,7 @@ import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
 import { extractFromImageLocally } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
 import { getOpenAISettings } from '@/src/services/settings';
-import { preprocessForOcr } from '@/src/services/image-preprocess';
+import { cropToGuide, normalizeOrientation, preprocessForOcr } from '@/src/services/image-preprocess';
 
 
 const USE_MOCK = false;
@@ -108,11 +108,18 @@ export default function HomeScreen() {
     const [aiSteps, setAiSteps] = useState<Step[]>(makeSteps(LOCAL_STEP_LABELS, 0));
     const [aiConfianca, setAiConfianca] = useState<number | null>(null);
 
+    // Mantém a UI em portrait enquanto a Home está focada. NÃO chamamos unlockAsync
+    // no cleanup: ao destravar a orientação, o expo-camera passa a produzir fotos na
+    // orientação física do aparelho (landscape se inclinado), o que desalinha a guia e
+    // o cropToGuide. O app.json já força "orientation": "portrait" nas demais telas.
     useFocusEffect(useCallback(() => {
-        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-        return () => ScreenOrientation.unlockAsync();
+        ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }, []));
 
+    const windowDims = useWindowDimensions();
+    const [cameraViewSize, setCameraViewSize] = useState({ width: 0, height: 0 });
+    const effectiveWidth = cameraViewSize.width || windowDims.width;
+    const effectiveHeight = cameraViewSize.height || windowDims.height;
     const createEntryMutation = useCreateTimeEntry();
     const isSaving = createEntryMutation.isPending;
     const tintColor = useThemeColor({}, 'tint');
@@ -159,11 +166,20 @@ export default function HomeScreen() {
                     return;
                 }
 
+                // Reafirma o lock portrait imediatamente antes de capturar. Como
+                // responsiveOrientationWhenOrientationLocked é false, com a tela travada o
+                // expo-camera sempre entrega a foto em portrait, alinhada à guia/crop.
+                await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
                 const photo = await cameraRef.current.takePictureAsync({
                     quality: 1,
                     shutterSound: false,
+                    exif: true,
                 });
-                photoUri = photo.uri;
+                // Achata a orientação EXIF (cobre 90° e 180°) antes de o Skia decodificar.
+                const orientedUri = await normalizeOrientation(photo.uri);
+                const guideRegion = computeGuideRegion(effectiveWidth, effectiveHeight);
+                // exif só dá a direção de giro caso o manipulator não achate em algum aparelho.
+                photoUri = await cropToGuide(orientedUri, guideRegion, photo.exif?.Orientation);
                 setUri(photoUri);
 
                 const settings = await getOpenAISettings();
@@ -321,15 +337,29 @@ export default function HomeScreen() {
                 </ThemedView>
             </KeyboardAvoidingView>
         ) : (
-            <ThemedView style={styles.takePictureContainer}>
+            <ThemedView
+                style={styles.takePictureContainer}
+                onLayout={(e) => setCameraViewSize({
+                    width: e.nativeEvent.layout.width,
+                    height: e.nativeEvent.layout.height,
+                })}
+            >
                 <CameraView
                     key={cameraKey}
                     style={styles.camera}
                     facing="back"
                     ref={cameraRef}
                     mute={true}
+                    // Foto sempre em portrait: ignora a inclinação física do aparelho
+                    // enquanto a orientação da tela está travada, evitando fotos giradas.
+                    responsiveOrientationWhenOrientationLocked={false}
                 />
-                {!isLoading && <CameraGuideOverlay />}
+                {!isLoading && (
+                    <CameraGuideOverlay
+                        containerWidth={effectiveWidth}
+                        containerHeight={effectiveHeight}
+                    />
+                )}
                 {isLoading && !showAiLoading && (
                     <View style={styles.loadingOverlay}>
                         <ActivityIndicator size="large" color="#0a7ea4" />

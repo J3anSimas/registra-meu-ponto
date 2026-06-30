@@ -8,8 +8,35 @@ const CORNER_THICKNESS = 3;
 const CORNER_COLOR = '#ffffff';
 const MASK_COLOR = 'rgba(0,0,0,0.55)';
 
-export function CameraGuideOverlay() {
-    const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+export type GuideRegion = {
+    leftFraction: number;
+    topFraction: number;
+    widthFraction: number;
+    heightFraction: number;
+};
+
+export function computeGuideRegion(containerWidth: number, containerHeight: number): GuideRegion {
+    const guideWidth = containerWidth * GUIDE_WIDTH_FRACTION;
+    const guideHeight = guideWidth / RECEIPT_RATIO;
+    const sideMargin = (containerWidth - guideWidth) / 2;
+    const topMargin = (containerHeight - guideHeight) / 2 - 30;
+    return {
+        leftFraction: sideMargin / containerWidth,
+        topFraction: topMargin / containerHeight,
+        widthFraction: GUIDE_WIDTH_FRACTION,
+        heightFraction: guideHeight / containerHeight,
+    };
+}
+
+type CameraGuideOverlayProps = {
+    containerWidth?: number;
+    containerHeight?: number;
+};
+
+export function CameraGuideOverlay({ containerWidth, containerHeight }: CameraGuideOverlayProps) {
+    const windowDims = useWindowDimensions();
+    const screenWidth = containerWidth || windowDims.width;
+    const screenHeight = containerHeight || windowDims.height;
 
     const guideWidth = screenWidth * GUIDE_WIDTH_FRACTION;
     const guideHeight = guideWidth / RECEIPT_RATIO;
