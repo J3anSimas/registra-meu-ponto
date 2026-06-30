@@ -105,7 +105,55 @@ export async function compressForStorage(uri: string): Promise<string> {
     return result.uri;
 }
 
-export async function cropToGuide(uri: string, region: GuideRegion, exifOrientation?: number): Promise<string> {
+type PixelRect = { x: number; y: number; width: number; height: number };
+
+/**
+ * Mapeia a região da guia (frações da TELA) para pixels da FOTO, compensando o "cover"
+ * do preview da câmera.
+ *
+ * O preview do expo-camera preenche a view com `cover`: a foto do sensor é escalada para
+ * cobrir a tela e o excedente é cortado (em portrait alto, sobra largura → corta as
+ * laterais). Logo as frações calculadas sobre a tela NÃO equivalem às mesmas frações na
+ * foto. Sem essa correção o recorte captura áreas que nunca apareceram no preview — o
+ * fundo ao redor do comprovante (bug do crop frouxo na tela de listagem).
+ *
+ * @example coverGuideToPixels(3060, 4080, 720, 1480, region) // → rect em pixels da foto
+ */
+function coverGuideToPixels(
+    photoW: number,
+    photoH: number,
+    viewW: number,
+    viewH: number,
+    region: GuideRegion,
+): PixelRect {
+    const scale = Math.max(viewW / photoW, viewH / photoH);
+    const offsetX = (viewW - photoW * scale) / 2; // ≤ 0 quando há corte horizontal
+    const offsetY = (viewH - photoH * scale) / 2;
+
+    const guideViewX = region.leftFraction * viewW;
+    const guideViewY = region.topFraction * viewH;
+    const guideViewW = region.widthFraction * viewW;
+    const guideViewH = region.heightFraction * viewH;
+
+    const rawX = (guideViewX - offsetX) / scale;
+    const rawY = (guideViewY - offsetY) / scale;
+    const rawW = guideViewW / scale;
+    const rawH = guideViewH / scale;
+
+    const x = Math.max(0, Math.round(rawX));
+    const y = Math.max(0, Math.round(rawY));
+    const width = Math.min(photoW - x, Math.round(rawW));
+    const height = Math.min(photoH - y, Math.round(rawH));
+    return { x, y, width, height };
+}
+
+export async function cropToGuide(
+    uri: string,
+    region: GuideRegion,
+    viewWidth: number,
+    viewHeight: number,
+    exifOrientation?: number,
+): Promise<string> {
     const data = await Skia.Data.fromURI(uri);
     const decoded = Skia.Image.MakeImageFromEncoded(data);
     if (!decoded) throw new Error('Não foi possível decodificar a imagem para crop.');
@@ -115,10 +163,8 @@ export async function cropToGuide(uri: string, region: GuideRegion, exifOrientat
 
     const srcW = image.width();
     const srcH = image.height();
-    const cropX = Math.round(srcW * region.leftFraction);
-    const cropY = Math.round(srcH * region.topFraction);
-    const cropW = Math.round(srcW * region.widthFraction);
-    const cropH = Math.round(srcH * region.heightFraction);
+    const { x: cropX, y: cropY, width: cropW, height: cropH } =
+        coverGuideToPixels(srcW, srcH, viewWidth, viewHeight, region);
 
     const surface = Skia.Surface.MakeOffscreen(cropW, cropH);
     if (!surface) throw new Error('Falha ao alocar superfície de crop.');

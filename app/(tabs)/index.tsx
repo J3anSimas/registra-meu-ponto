@@ -178,8 +178,10 @@ export default function HomeScreen() {
                 // Achata a orientação EXIF (cobre 90° e 180°) antes de o Skia decodificar.
                 const orientedUri = await normalizeOrientation(photo.uri);
                 const guideRegion = computeGuideRegion(effectiveWidth, effectiveHeight);
+                // Passa as dimensões da view para mapear a guia (frações da tela) para os
+                // pixels da foto, compensando o "cover" do preview da câmera.
                 // exif só dá a direção de giro caso o manipulator não achate em algum aparelho.
-                photoUri = await cropToGuide(orientedUri, guideRegion, photo.exif?.Orientation);
+                photoUri = await cropToGuide(orientedUri, guideRegion, effectiveWidth, effectiveHeight, photo.exif?.Orientation);
                 setUri(photoUri);
 
                 const settings = await getOpenAISettings();
