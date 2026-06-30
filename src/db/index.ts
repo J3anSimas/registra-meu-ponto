@@ -108,6 +108,31 @@ export const createTimeEntry = async (entry: TimeEntry): Promise<TimeEntry> => {
 }
 
 /**
+ * READ: Verifica se já existe uma entrada com a mesma data e hora.
+ * Usada para impedir registros duplicados antes de inserir.
+ */
+export const timeEntryExists = async (date: string, hour: string): Promise<boolean> => {
+    const db = await setupDatabase();
+
+    const existsQuery = `SELECT 1 FROM ${TIME_ENTRY_TABLE} WHERE date = ? AND hour = ? LIMIT 1;`;
+
+    return new Promise((resolve, reject) => {
+        db.transaction((tx) => {
+            tx.executeSql(
+                existsQuery,
+                [date, hour],
+                (_, results) => resolve(results.rows.length > 0),
+                (_, error) => {
+                    console.error(`Erro ao verificar duplicata ${date} ${hour}`, error);
+                    reject(error);
+                    return true;
+                }
+            );
+        });
+    });
+}
+
+/**
  * 2. READ: Busca todas as entradas.
  */
 export const getAllTimeEntries = async (): Promise<TimeEntry[]> => {

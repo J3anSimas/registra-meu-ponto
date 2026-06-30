@@ -16,6 +16,7 @@ import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCreateTimeEntry } from '@/src/hooks/use-time-entries';
+import { timeEntryExists } from '@/src/db';
 import { useReceiptAutodetect } from '@/src/hooks/use-receipt-autodetect';
 import { extractFromImageLocally, isValidDate } from '@/src/services/ocr';
 import { extractFromImageWithOpenAI } from '@/src/services/openai';
@@ -295,6 +296,11 @@ export default function HomeScreen() {
         if (isSaving) return;
 
         try {
+            if (await timeEntryExists(date, hour)) {
+                Alert.alert('Registro duplicado', `Já existe um registro para ${date} às ${hour}.`);
+                return;
+            }
+
             const id = v4();
             const folder = new Directory(Paths.document, 'time_entries');
             if (!folder.exists) {
